@@ -5,24 +5,40 @@ import Profiles from './Profiles';
 import ReviewSection from './ReviewSection';
 import './index.css';
 
+// 1. ADIM: SİTENİN BOŞ GÖRÜNMEMESİ İÇİN VARSAYILAN VERİLERİ TANIMLIYORUZ
+const DEFAULT_ANIMES = [
+  {
+    title: "Solo Leveling",
+    desc: "Jinwoo'nun yükselişi ve dünyayı kurtarma mücadelesi...",
+    img: "https://images.alphacoders.com/132/1322554.jpeg",
+    fansub: "KAI-SUB",
+    rating: "9.8",
+    seasons: [
+      {
+        seasonNumber: 1,
+        episodes: [
+          { number: 1, url: "https://www.youtube.com/embed/dQw4w9WgXcQ", title: "1. Bölüm" } 
+        ]
+      }
+    ],
+    reviews: []
+  }
+];
+
 function App() {
   const [activeUser, setActiveUser] = useState(JSON.parse(localStorage.getItem('activeUser')) || null);
   const [selectedProfile, setSelectedProfile] = useState(JSON.parse(localStorage.getItem('selectedProfile')) || null);
   const [page, setPage] = useState(activeUser ? (selectedProfile ? 'home' : 'profiles') : 'login');
   const [users, setUsers] = useState(JSON.parse(localStorage.getItem('kaiUsers')) || []);
-  const [animes, setAnimes] = useState(JSON.parse(localStorage.getItem('kaiAnimes')) || []);
-  const [selectedAnime, setSelectedAnime] = useState(null);
   
-  // SEZON VE BÖLÜM TAKİBİ
+  // 2. ADIM: EĞER LOCALSTORAGE BOŞSA VARSAYILAN LİSTEYİ GETİRİYORUZ
+  const [animes, setAnimes] = useState(JSON.parse(localStorage.getItem('kaiAnimes')) || DEFAULT_ANIMES);
+  
+  const [selectedAnime, setSelectedAnime] = useState(null);
   const [currentSeasonIdx, setCurrentSeasonIdx] = useState(0);
   const [currentEpIndex, setCurrentEpIndex] = useState(0);
-
   const [adTimer, setAdTimer] = useState(5);
-  const [hero, setHero] = useState(JSON.parse(localStorage.getItem('kaiHero')) || { 
-    title: "Solo Leveling", 
-    desc: "Jinwoo'nun yükselişi ve dünyayı kurtarma mücadelesi...", 
-    img: "https://images.alphacoders.com/132/1322554.jpeg" 
-  });
+  const [hero, setHero] = useState(JSON.parse(localStorage.getItem('kaiHero')) || DEFAULT_ANIMES[0]);
 
   const [toast, setToast] = useState({ show: false, msg: '', type: 'info' });
   const showMsg = (msg, type = 'info') => {
@@ -61,20 +77,13 @@ function App() {
     showMsg("Geçmişten kaldırıldı", "info");
   };
 
-  // --- KRİTİK GÜNCELLEME: İZLEME BAŞLATMA ---
   const handleWatch = (anime) => {
-    // 1. Kontrol: Yeni Sezonlu Yapı var mı?
     let playAnime = { ...anime };
     let hasSeasons = anime.seasons && anime.seasons.length > 0 && anime.seasons[0].episodes?.length > 0;
-    
-    // 2. Kontrol: Eski Düz Liste yapısı var mı?
     let hasOldEps = anime.episodes && anime.episodes.length > 0;
 
-    if (!hasSeasons && !hasOldEps) {
-      return showMsg("Bu animenin henüz bölümü yok!", "error");
-    }
+    if (!hasSeasons && !hasOldEps) return showMsg("Bu animenin henüz bölümü yok!", "error");
 
-    // Eğer eski yapıdaysa, player'ın çalışması için sezona çeviriyoruz
     if (!hasSeasons && hasOldEps) {
       playAnime.seasons = [{ seasonNumber: 1, episodes: anime.episodes }];
     }
@@ -107,9 +116,7 @@ function App() {
           return prev - 1;
         });
       }, 1000);
-    } else { 
-      setPage('watch'); 
-    }
+    } else { setPage('watch'); }
   };
 
   const handleAddReview = (animeTitle, reviewText, rating) => {
@@ -144,7 +151,6 @@ function App() {
     window.location.reload();
   };
 
-  // Player için yardımcı değişkenler
   const currentSeason = selectedAnime?.seasons?.[currentSeasonIdx];
   const currentEpisode = currentSeason?.episodes?.[currentEpIndex];
 
@@ -178,9 +184,7 @@ function App() {
         } else if (existing) {
           if (existing.isBanned) return showMsg("Yasaklı hesap!", "error");
           setActiveUser(existing); setPage('profiles'); showMsg("Giriş başarılı!", "success");
-        } else {
-          showMsg("Hatalı bilgiler!", "error");
-        }
+        } else { showMsg("Hatalı bilgiler!", "error"); }
       }} onSwitch={() => setPage('register')} />}
 
       {page === 'register' && <AuthView type="register" onAction={(u) => {
@@ -192,13 +196,7 @@ function App() {
       {page === 'profiles' && activeUser && <Profiles user={activeUser} onSelect={(p) => {setSelectedProfile(p); setPage('home');}} onUpdateUser={handleUpdateUser} />}
       
       {page === 'home' && (
-        <Home 
-          hero={hero} 
-          animeList={animes} 
-          onWatch={handleWatch} 
-          history={selectedProfile?.history || []} 
-          onRemoveHistory={handleRemoveHistory} 
-        />
+        <Home hero={hero} animeList={animes} onWatch={handleWatch} history={selectedProfile?.history || []} onRemoveHistory={handleRemoveHistory} />
       )}
       
       {page === 'admin' && <Admin allUsers={users} setUsers={setUsers} animeList={animes} setAnimes={setAnimes} onAnimeDelete={(idx) => setAnimes(animes.filter((_, i) => i !== idx))} setHero={setHero} goToHome={() => setPage('home')} />}
@@ -212,23 +210,17 @@ function App() {
               <p>S{currentSeason?.seasonNumber} - Bölüm {currentEpisode?.number}</p>
             </div>
             <div className="nav-btns">
-              <button 
-                disabled={currentEpIndex === 0 && currentSeasonIdx === 0} 
-                onClick={() => {
-                   if(currentEpIndex > 0) {
-                      setCurrentEpIndex(currentEpIndex - 1);
-                   } else if(currentSeasonIdx > 0) {
+              <button disabled={currentEpIndex === 0 && currentSeasonIdx === 0} onClick={() => {
+                   if(currentEpIndex > 0) setCurrentEpIndex(currentEpIndex - 1);
+                   else if(currentSeasonIdx > 0) {
                       const prevSIdx = currentSeasonIdx - 1;
                       setCurrentSeasonIdx(prevSIdx);
                       setCurrentEpIndex(selectedAnime.seasons[prevSIdx].episodes.length - 1);
                    }
                 }}>Önceki</button>
-              <button 
-                disabled={currentEpIndex === (currentSeason?.episodes.length - 1) && currentSeasonIdx === (selectedAnime.seasons.length - 1)} 
-                onClick={() => {
-                    if(currentEpIndex < currentSeason.episodes.length - 1) {
-                        setCurrentEpIndex(currentEpIndex + 1);
-                    } else if(currentSeasonIdx < selectedAnime.seasons.length - 1) {
+              <button disabled={currentEpIndex === (currentSeason?.episodes.length - 1) && currentSeasonIdx === (selectedAnime.seasons.length - 1)} onClick={() => {
+                    if(currentEpIndex < currentSeason.episodes.length - 1) setCurrentEpIndex(currentEpIndex + 1);
+                    else if(currentSeasonIdx < selectedAnime.seasons.length - 1) {
                         setCurrentSeasonIdx(currentSeasonIdx + 1);
                         setCurrentEpIndex(0);
                     }
@@ -237,36 +229,24 @@ function App() {
           </div>
           
           <div className="video-section">
-            <iframe 
-              src={currentEpisode?.url} 
-              allowFullScreen 
-              referrerPolicy="no-referrer"
-              title="v"
-            ></iframe>
+            <iframe src={currentEpisode?.url} allowFullScreen referrerPolicy="no-referrer" title="v"></iframe>
           </div>
 
           <div className="watch-content">
-            {/* SEZON SEÇİCİ */}
             <div className="seasons-nav" style={{display:'flex', gap:'10px', marginBottom:'20px', overflowX:'auto', paddingBottom:'10px'}}>
                 {selectedAnime.seasons?.map((s, idx) => (
-                    <button 
-                        key={idx} 
-                        className={`btn-gray ${currentSeasonIdx === idx ? 'active-season' : ''}`}
+                    <button key={idx} className={`btn-gray ${currentSeasonIdx === idx ? 'active-season' : ''}`}
                         style={{minWidth:'100px', border: currentSeasonIdx === idx ? '2px solid #E50914' : 'none', background: currentSeasonIdx === idx ? '#E50914' : '#222'}}
-                        onClick={() => { setCurrentSeasonIdx(idx); setCurrentEpIndex(0); }}
-                    >
+                        onClick={() => { setCurrentSeasonIdx(idx); setCurrentEpIndex(0); }}>
                         {s.seasonNumber}. Sezon
                     </button>
                 ))}
             </div>
-
             <div className="episodes-list">
                <h4>Sezon {currentSeason?.seasonNumber} Bölümleri</h4>
                <div className="ep-grid">
                   {currentSeason?.episodes.map((ep, i) => (
-                    <button key={i} className={currentEpIndex === i ? 'active' : ''} onClick={() => setCurrentEpIndex(i)}>
-                      {ep.number}
-                    </button>
+                    <button key={i} className={currentEpIndex === i ? 'active' : ''} onClick={() => setCurrentEpIndex(i)}>{ep.number}</button>
                   ))}
                </div>
             </div>
