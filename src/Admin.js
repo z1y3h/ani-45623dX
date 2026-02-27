@@ -54,7 +54,7 @@ function Admin({ allUsers, setUsers, animeList, onAnimeDelete, setAnimes, setHer
     for (let i = 1; i <= count; i++) {
       newEpisodes.push({
         number: i,
-        url: `https://seicode.net/anime/${id}/${season}/${i}`, 
+        url: `https://animecix.tv/titles/${id}/${season}/${i}`, 
         title: `Bölüm ${i}`
       });
     }
