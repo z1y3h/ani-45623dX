@@ -5,7 +5,30 @@ import Profiles from './Profiles';
 import ReviewSection from './ReviewSection';
 import './index.css';
 
-// 1. ADIM: SİTENİN BOŞ GÖRÜNMEMESİ İÇİN VARSAYILAN VERİLERİ TANIMLIYORUZ
+// REKLAM BİLEŞENİ: Google'dan aldığın kodları buraya yerleştireceksin
+const GoogleAd = ({ slotId }) => {
+  useEffect(() => {
+    try {
+      (window.adsbygoogle = window.adsbygoogle || []).push({});
+    } catch (e) {
+      console.log("Reklam yükleme hatası (Normaldir, onay bekliyor olabilirsiniz):", e);
+    }
+  }, []);
+
+  return (
+    <div className="ad-wrapper" style={{ margin: '20px 0', textAlign: 'center', minHeight: '90px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px' }}>
+      <small style={{ color: '#555', display: 'block', marginBottom: '5px' }}>Sponsorlu İçerik</small>
+      {/* Google'ın verdiği <ins> kodunu buraya yapıştır */}
+      <ins className="adsbygoogle"
+           style={{ display: 'block' }}
+           data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" // BURAYA KENDİ YAYINCI ID'Nİ YAZ
+           data-ad-slot={slotId}
+           data-ad-format="auto"
+           data-full-width-responsive="true"></ins>
+    </div>
+  );
+};
+
 const DEFAULT_ANIMES = [
   {
     title: "Solo Leveling",
@@ -30,10 +53,7 @@ function App() {
   const [selectedProfile, setSelectedProfile] = useState(JSON.parse(localStorage.getItem('selectedProfile')) || null);
   const [page, setPage] = useState(activeUser ? (selectedProfile ? 'home' : 'profiles') : 'login');
   const [users, setUsers] = useState(JSON.parse(localStorage.getItem('kaiUsers')) || []);
-  
-  // 2. ADIM: EĞER LOCALSTORAGE BOŞSA VARSAYILAN LİSTEYİ GETİRİYORUZ
   const [animes, setAnimes] = useState(JSON.parse(localStorage.getItem('kaiAnimes')) || DEFAULT_ANIMES);
-  
   const [selectedAnime, setSelectedAnime] = useState(null);
   const [currentSeasonIdx, setCurrentSeasonIdx] = useState(0);
   const [currentEpIndex, setCurrentEpIndex] = useState(0);
@@ -196,7 +216,13 @@ function App() {
       {page === 'profiles' && activeUser && <Profiles user={activeUser} onSelect={(p) => {setSelectedProfile(p); setPage('home');}} onUpdateUser={handleUpdateUser} />}
       
       {page === 'home' && (
-        <Home hero={hero} animeList={animes} onWatch={handleWatch} history={selectedProfile?.history || []} onRemoveHistory={handleRemoveHistory} />
+        <>
+          <Home hero={hero} animeList={animes} onWatch={handleWatch} history={selectedProfile?.history || []} onRemoveHistory={handleRemoveHistory} />
+          {/* ANA SAYFA REKLAMI */}
+          <div className="container" style={{maxWidth:'1200px', margin:'0 auto'}}>
+             <GoogleAd slotId="7777777777" />
+          </div>
+        </>
       )}
       
       {page === 'admin' && <Admin allUsers={users} setUsers={setUsers} animeList={animes} setAnimes={setAnimes} onAnimeDelete={(idx) => setAnimes(animes.filter((_, i) => i !== idx))} setHero={setHero} goToHome={() => setPage('home')} />}
@@ -228,11 +254,17 @@ function App() {
             </div>
           </div>
           
+          {/* İZLEME SAYFASI ÜST REKLAM */}
+          <GoogleAd slotId="8888888888" />
+
           <div className="video-section">
             <iframe src={currentEpisode?.url} allowFullScreen referrerPolicy="no-referrer" title="v"></iframe>
           </div>
 
           <div className="watch-content">
+            {/* İZLEME SAYFASI VİDEO ALTI REKLAM */}
+            <GoogleAd slotId="9999999999" />
+
             <div className="seasons-nav" style={{display:'flex', gap:'10px', marginBottom:'20px', overflowX:'auto', paddingBottom:'10px'}}>
                 {selectedAnime.seasons?.map((s, idx) => (
                     <button key={idx} className={`btn-gray ${currentSeasonIdx === idx ? 'active-season' : ''}`}
