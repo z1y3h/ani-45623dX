@@ -5,20 +5,23 @@ import Profiles from './Profiles';
 import ReviewSection from './ReviewSection';
 import './index.css';
 
-// REKLAM BİLEŞENİ: Google'dan aldığın kodları buraya yerleştireceksin
+// 1. ADIM: Firebase Bağlantısını İçeri Aktar
+import { db } from './firebase'; 
+import { ref, onValue, set } from "firebase/database";
+
+// REKLAM BİLEŞENİ
 const GoogleAd = ({ slotId }) => {
   useEffect(() => {
     try {
       (window.adsbygoogle = window.adsbygoogle || []).push({});
     } catch (e) {
-      console.log("Reklam yükleme hatası (Normaldir, onay bekliyor olabilirsiniz):", e);
+      console.log("Reklam yükleme hatası:", e);
     }
   }, []);
 
   return (
     <div className="ad-wrapper" style={{ margin: '20px 0', textAlign: 'center', minHeight: '90px', background: 'rgba(255,255,255,0.03)', borderRadius: '8px', padding: '10px' }}>
       <small style={{ color: '#555', display: 'block', marginBottom: '5px' }}>Sponsorlu İçerik</small>
-      {/* Google'ın verdiği <ins> kodunu buraya yapıştır */}
       <ins className="adsbygoogle"
            style={{ display: 'block' }}
            data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" // BURAYA KENDİ YAYINCI ID'Nİ YAZ
@@ -52,27 +55,52 @@ function App() {
   const [activeUser, setActiveUser] = useState(JSON.parse(localStorage.getItem('activeUser')) || null);
   const [selectedProfile, setSelectedProfile] = useState(JSON.parse(localStorage.getItem('selectedProfile')) || null);
   const [page, setPage] = useState(activeUser ? (selectedProfile ? 'home' : 'profiles') : 'login');
+  
+  // Veritabanından gelecek eyaletler (States)
   const [users, setUsers] = useState(JSON.parse(localStorage.getItem('kaiUsers')) || []);
-  const [animes, setAnimes] = useState(JSON.parse(localStorage.getItem('kaiAnimes')) || DEFAULT_ANIMES);
+  const [animes, setAnimes] = useState(DEFAULT_ANIMES);
+  const [hero, setHero] = useState(DEFAULT_ANIMES[0]);
+
   const [selectedAnime, setSelectedAnime] = useState(null);
   const [currentSeasonIdx, setCurrentSeasonIdx] = useState(0);
   const [currentEpIndex, setCurrentEpIndex] = useState(0);
   const [adTimer, setAdTimer] = useState(5);
-  const [hero, setHero] = useState(JSON.parse(localStorage.getItem('kaiHero')) || DEFAULT_ANIMES[0]);
-
   const [toast, setToast] = useState({ show: false, msg: '', type: 'info' });
+
   const showMsg = (msg, type = 'info') => {
     setToast({ show: true, msg, type });
     setTimeout(() => setToast({ show: false, msg: '', type: 'info' }), 3000);
   };
 
+  // 2. ADIM: Firebase'den Verileri Canlı Çekme
+  useEffect(() => {
+    // Anime Listesini Çek
+    const animesRef = ref(db, 'animes');
+    onValue(animesRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) setAnimes(data);
+      else set(ref(db, 'animes'), DEFAULT_ANIMES); // DB boşsa varsayılanı yükle
+    });
+
+    // Hero Animeyi Çek
+    const heroRef = ref(db, 'hero');
+    onValue(heroRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) setHero(data);
+    });
+  }, []);
+
+  // Yerel verileri saklamaya devam et (Oturum yönetimi için)
   useEffect(() => {
     localStorage.setItem('kaiUsers', JSON.stringify(users));
-    localStorage.setItem('kaiAnimes', JSON.stringify(animes));
-    localStorage.setItem('kaiHero', JSON.stringify(hero));
     if(activeUser) localStorage.setItem('activeUser', JSON.stringify(activeUser));
     if(selectedProfile) localStorage.setItem('selectedProfile', JSON.stringify(selectedProfile));
-  }, [users, animes, hero, activeUser, selectedProfile]);
+  }, [users, activeUser, selectedProfile]);
+
+  // 3. ADIM: Firebase Güncelleme Yardımcısı
+  const updateAnimesInFirebase = (newAnimes) => {
+    set(ref(db, 'animes'), newAnimes);
+  };
 
   const handleUpdateUser = (updatedUser) => {
     setActiveUser(updatedUser);
@@ -156,12 +184,7 @@ function App() {
       }
       return a;
     });
-    setAnimes(updatedAnimes);
-    setSelectedAnime(prev => ({
-      ...prev, 
-      reviews: [newReview, ...(prev.reviews || [])],
-      rating: updatedAnimes.find(x => x.title === animeTitle).rating
-    }));
+    updateAnimesInFirebase(updatedAnimes); // Firebase'e gönder
     showMsg("Yorumun eklendi!", "success");
   };
 
@@ -218,14 +241,27 @@ function App() {
       {page === 'home' && (
         <>
           <Home hero={hero} animeList={animes} onWatch={handleWatch} history={selectedProfile?.history || []} onRemoveHistory={handleRemoveHistory} />
-          {/* ANA SAYFA REKLAMI */}
           <div className="container" style={{maxWidth:'1200px', margin:'0 auto'}}>
              <GoogleAd slotId="7777777777" />
           </div>
         </>
       )}
       
-      {page === 'admin' && <Admin allUsers={users} setUsers={setUsers} animeList={animes} setAnimes={setAnimes} onAnimeDelete={(idx) => setAnimes(animes.filter((_, i) => i !== idx))} setHero={setHero} goToHome={() => setPage('home')} />}
+      {page === 'admin' && (
+        <Admin 
+          allUsers={users} 
+          setUsers={setUsers} 
+          animeList={animes} 
+          setAnimes={(newList) => { setAnimes(newList); updateAnimesInFirebase(newList); }} 
+          onAnimeDelete={(idx) => {
+            const newList = animes.filter((_, i) => i !== idx);
+            setAnimes(newList);
+            updateAnimesInFirebase(newList);
+          }} 
+          setHero={(h) => { setHero(h); set(ref(db, 'hero'), h); }} 
+          goToHome={() => setPage('home')} 
+        />
+      )}
 
       {page === 'watch' && selectedAnime && (
         <div className="modern-watch">
@@ -235,26 +271,8 @@ function App() {
               <h3>{selectedAnime.title}</h3>
               <p>S{currentSeason?.seasonNumber} - Bölüm {currentEpisode?.number}</p>
             </div>
-            <div className="nav-btns">
-              <button disabled={currentEpIndex === 0 && currentSeasonIdx === 0} onClick={() => {
-                   if(currentEpIndex > 0) setCurrentEpIndex(currentEpIndex - 1);
-                   else if(currentSeasonIdx > 0) {
-                      const prevSIdx = currentSeasonIdx - 1;
-                      setCurrentSeasonIdx(prevSIdx);
-                      setCurrentEpIndex(selectedAnime.seasons[prevSIdx].episodes.length - 1);
-                   }
-                }}>Önceki</button>
-              <button disabled={currentEpIndex === (currentSeason?.episodes.length - 1) && currentSeasonIdx === (selectedAnime.seasons.length - 1)} onClick={() => {
-                    if(currentEpIndex < currentSeason.episodes.length - 1) setCurrentEpIndex(currentEpIndex + 1);
-                    else if(currentSeasonIdx < selectedAnime.seasons.length - 1) {
-                        setCurrentSeasonIdx(currentSeasonIdx + 1);
-                        setCurrentEpIndex(0);
-                    }
-                }}>Sonraki</button>
-            </div>
           </div>
           
-          {/* İZLEME SAYFASI ÜST REKLAM */}
           <GoogleAd slotId="8888888888" />
 
           <div className="video-section">
@@ -262,9 +280,7 @@ function App() {
           </div>
 
           <div className="watch-content">
-            {/* İZLEME SAYFASI VİDEO ALTI REKLAM */}
             <GoogleAd slotId="9999999999" />
-
             <div className="seasons-nav" style={{display:'flex', gap:'10px', marginBottom:'20px', overflowX:'auto', paddingBottom:'10px'}}>
                 {selectedAnime.seasons?.map((s, idx) => (
                     <button key={idx} className={`btn-gray ${currentSeasonIdx === idx ? 'active-season' : ''}`}
