@@ -24,7 +24,7 @@ const GoogleAd = ({ slotId }) => {
       <small style={{ color: '#555', display: 'block', marginBottom: '5px' }}>Sponsorlu İçerik</small>
       <ins className="adsbygoogle"
            style={{ display: 'block' }}
-           data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" // BURAYA KENDİ YAYINCI ID'Nİ YAZ
+           data-ad-client="ca-pub-XXXXXXXXXXXXXXXX" 
            data-ad-slot={slotId}
            data-ad-format="auto"
            data-full-width-responsive="true"></ins>
@@ -56,7 +56,6 @@ function App() {
   const [selectedProfile, setSelectedProfile] = useState(JSON.parse(localStorage.getItem('selectedProfile')) || null);
   const [page, setPage] = useState(activeUser ? (selectedProfile ? 'home' : 'profiles') : 'login');
   
-  // Veritabanından gelecek eyaletler (States)
   const [users, setUsers] = useState(JSON.parse(localStorage.getItem('kaiUsers')) || []);
   const [animes, setAnimes] = useState(DEFAULT_ANIMES);
   const [hero, setHero] = useState(DEFAULT_ANIMES[0]);
@@ -72,17 +71,14 @@ function App() {
     setTimeout(() => setToast({ show: false, msg: '', type: 'info' }), 3000);
   };
 
-  // 2. ADIM: Firebase'den Verileri Canlı Çekme
   useEffect(() => {
-    // Anime Listesini Çek
     const animesRef = ref(db, 'animes');
     onValue(animesRef, (snapshot) => {
       const data = snapshot.val();
       if (data) setAnimes(data);
-      else set(ref(db, 'animes'), DEFAULT_ANIMES); // DB boşsa varsayılanı yükle
+      else set(ref(db, 'animes'), DEFAULT_ANIMES);
     });
 
-    // Hero Animeyi Çek
     const heroRef = ref(db, 'hero');
     onValue(heroRef, (snapshot) => {
       const data = snapshot.val();
@@ -90,14 +86,12 @@ function App() {
     });
   }, []);
 
-  // Yerel verileri saklamaya devam et (Oturum yönetimi için)
   useEffect(() => {
     localStorage.setItem('kaiUsers', JSON.stringify(users));
     if(activeUser) localStorage.setItem('activeUser', JSON.stringify(activeUser));
     if(selectedProfile) localStorage.setItem('selectedProfile', JSON.stringify(selectedProfile));
   }, [users, activeUser, selectedProfile]);
 
-  // 3. ADIM: Firebase Güncelleme Yardımcısı
   const updateAnimesInFirebase = (newAnimes) => {
     set(ref(db, 'animes'), newAnimes);
   };
@@ -184,7 +178,7 @@ function App() {
       }
       return a;
     });
-    updateAnimesInFirebase(updatedAnimes); // Firebase'e gönder
+    updateAnimesInFirebase(updatedAnimes);
     showMsg("Yorumun eklendi!", "success");
   };
 
@@ -231,7 +225,15 @@ function App() {
       }} onSwitch={() => setPage('register')} />}
 
       {page === 'register' && <AuthView type="register" onAction={(u) => {
-        if(users.some(x => x.email === u.email)) return showMsg("Bu email kayıtlı!", "error");
+        // --- YENİ GÜVENLİK KONTROLLERİ ---
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        
+        if (!u.username || u.username.length < 3) return showMsg("Kullanıcı adı en az 3 harf olmalı!", "error");
+        if (!emailRegex.test(u.email)) return showMsg("Geçersiz e-posta! (Örn: isim@mail.com)", "error");
+        if (u.password.length < 8) return showMsg("Şifre en az 8 haneli olmalı!", "error");
+        if (users.some(x => x.email === u.email)) return showMsg("Bu e-posta zaten kayıtlı!", "error");
+        // --------------------------------
+
         setUsers([...users, {...u, role:'user', isBanned:false}]); 
         showMsg("Kayıt başarılı!", "success"); setPage('login');
       }} onSwitch={() => setPage('login')} />}
@@ -319,19 +321,60 @@ function App() {
   );
 }
 
+// GİRİŞ VE KAYIT EKRANI BİLEŞENİ
 function AuthView({ type, onAction, onSwitch }) {
-  const [e, setE] = useState(''); const [p, setP] = useState(''); const [u, setU] = useState('');
+  const [e, setE] = useState(''); 
+  const [p, setP] = useState(''); 
+  const [u, setU] = useState('');
+
+  const handleSubmit = () => {
+    if (type === 'login') {
+      onAction(e, p);
+    } else {
+      onAction({
+        username: u, 
+        email: e, 
+        password: p, 
+        profiles: [{
+          name: u, 
+          img: 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png', 
+          history: []
+        }]
+      });
+    }
+  };
+
   return (
-    <div className="modal-overlay" style={{background:'#000'}}>
+    <div className="modal-overlay" style={{ background: '#000' }}>
       <div className="modal">
         <h1>{type === 'login' ? 'Giriş' : 'Kayıt'}</h1>
-        {type === 'register' && <input className="admin-input" placeholder="Kullanıcı Adı" onChange={x => setU(x.target.value)} />}
-        <input className="admin-input" placeholder="E-posta" onChange={x => setE(x.target.value)} />
-        <input className="admin-input" type="password" placeholder="Şifre" onChange={x => setP(x.target.value)} />
-        <button className="btn-red" style={{width:'100%'}} onClick={() => type === 'login' ? onAction(e, p) : onAction({username:u, email:e, password:p, profiles:[{name:u, img:'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png', history:[]}]})}>
+        
+        {type === 'register' && (
+          <input 
+            className="admin-input" 
+            placeholder="Kullanıcı Adı" 
+            onChange={x => setU(x.target.value)} 
+          />
+        )}
+        
+        <input 
+          className="admin-input" 
+          placeholder="E-posta" 
+          onChange={x => setE(x.target.value)} 
+        />
+        
+        <input 
+          className="admin-input" 
+          type="password" 
+          placeholder="Şifre" 
+          onChange={x => setP(x.target.value)} 
+        />
+        
+        <button className="btn-red" style={{ width: '100%' }} onClick={handleSubmit}>
           {type === 'login' ? 'Giriş Yap' : 'Hesap Oluştur'}
         </button>
-        <p onClick={onSwitch} style={{cursor:'pointer', marginTop:'15px', fontSize:'14px', color:'#888'}}>
+        
+        <p onClick={onSwitch} style={{ cursor: 'pointer', marginTop: '15px', fontSize: '14px', color: '#888' }}>
           {type === 'login' ? 'Hesabın yok mu? Kayıt Ol' : 'Zaten üye misin? Giriş Yap'}
         </p>
       </div>
