@@ -54,7 +54,7 @@ function Admin({ allUsers, setUsers, animeList, onAnimeDelete, setAnimes, setHer
     for (let i = 1; i <= count; i++) {
       newEpisodes.push({
         number: i,
-        url: `https://animecix.tv/titles/${id}/${season}/${i}`, 
+        url: `https://www.tranimeizle.io/${id}-${season}-${i}`, 
         title: `Bölüm ${i}`
       });
     }
