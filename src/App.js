@@ -5,9 +5,9 @@ import Profiles from './Profiles';
 import ReviewSection from './ReviewSection';
 import './index.css';
 
-// 1. ADIM: Firebase Bağlantısını İçeri Aktar
+// Firebase Bağlantısı
 import { db } from './firebase'; 
-import { ref, onValue, set } from "firebase/database";
+import { ref, onValue, set, update } from "firebase/database";
 
 // REKLAM BİLEŞENİ
 const GoogleAd = ({ slotId }) => {
@@ -56,9 +56,10 @@ function App() {
   const [selectedProfile, setSelectedProfile] = useState(JSON.parse(localStorage.getItem('selectedProfile')) || null);
   const [page, setPage] = useState(activeUser ? (selectedProfile ? 'home' : 'profiles') : 'login');
   
-  const [users, setUsers] = useState(JSON.parse(localStorage.getItem('kaiUsers')) || []);
-  const [animes, setAnimes] = useState(DEFAULT_ANIMES);
-  const [hero, setHero] = useState(DEFAULT_ANIMES[0]);
+  // Veriler artık Firebase'den gelecek
+  const [users, setUsers] = useState([]);
+  const [animes, setAnimes] = useState([]);
+  const [hero, setHero] = useState(null);
 
   const [selectedAnime, setSelectedAnime] = useState(null);
   const [currentSeasonIdx, setCurrentSeasonIdx] = useState(0);
@@ -71,66 +72,96 @@ function App() {
     setTimeout(() => setToast({ show: false, msg: '', type: 'info' }), 3000);
   };
 
+  // --- FIREBASE VERİLERİNİ CANLI ÇEK ---
   useEffect(() => {
-    const animesRef = ref(db, 'animes');
-    onValue(animesRef, (snapshot) => {
+    // Animeleri Çek
+    onValue(ref(db, 'animes'), (snapshot) => {
       const data = snapshot.val();
       if (data) setAnimes(data);
       else set(ref(db, 'animes'), DEFAULT_ANIMES);
     });
 
-    const heroRef = ref(db, 'hero');
-    onValue(heroRef, (snapshot) => {
+    // Kullanıcıları Çek (Admin Panelinde herkesi görmen için şart)
+    onValue(ref(db, 'users'), (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        // Firebase objesini diziye çeviriyoruz
+        const userList = Object.values(data);
+        setUsers(userList);
+      }
+    });
+
+    // Hero Çek
+    onValue(ref(db, 'hero'), (snapshot) => {
       const data = snapshot.val();
       if (data) setHero(data);
     });
   }, []);
 
+  // Oturum Yönetimi
   useEffect(() => {
-    localStorage.setItem('kaiUsers', JSON.stringify(users));
     if(activeUser) localStorage.setItem('activeUser', JSON.stringify(activeUser));
     if(selectedProfile) localStorage.setItem('selectedProfile', JSON.stringify(selectedProfile));
-  }, [users, activeUser, selectedProfile]);
+  }, [activeUser, selectedProfile]);
 
-  const updateAnimesInFirebase = (newAnimes) => {
-    set(ref(db, 'animes'), newAnimes);
+  // Firebase Kullanıcı Güncelleme Yardımcısı
+  const saveUserToFirebase = (userObj) => {
+    const safeEmail = userObj.email.replace(/\./g, '_'); // Firebase '.' kabul etmez
+    set(ref(db, `users/${safeEmail}`), userObj);
   };
 
   const handleUpdateUser = (updatedUser) => {
     setActiveUser(updatedUser);
-    const updatedUsers = users.map(u => u.email === updatedUser.email ? updatedUser : u);
-    setUsers(updatedUsers);
+    saveUserToFirebase(updatedUser);
     if (selectedProfile) {
       const currentP = updatedUser.profiles.find(p => p.name === selectedProfile.name);
       if (currentP) setSelectedProfile(currentP);
     }
   };
 
-  const handleRemoveHistory = (animeTitle) => {
-    if (!selectedProfile || !activeUser) return;
-    const updatedHistory = (selectedProfile.history || []).filter(a => a.title !== animeTitle);
-    const updatedProfile = { ...selectedProfile, history: updatedHistory };
-    setSelectedProfile(updatedProfile);
-    const updatedUser = { 
-      ...activeUser, 
-      profiles: activeUser.profiles.map(p => p.name === selectedProfile.name ? updatedProfile : p) 
-    };
-    handleUpdateUser(updatedUser);
-    showMsg("Geçmişten kaldırıldı", "info");
+  const handleLogin = (e, p) => {
+    const existing = users.find(x => x.email === e && x.password === p);
+    
+    // Admin Sabit Girişi
+    if (e === "rojhatdonenn@gmail.com" && p === "rdXhejsNfu21") {
+      const adminData = existing || {
+        email: e, password: p, role: 'admin', username: 'Rojhat', isBanned: false,
+        profiles: [{name: 'Admin', img: 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png', history: []}]
+      };
+      if (!existing) saveUserToFirebase(adminData);
+      setActiveUser(adminData); setPage('profiles'); showMsg("Hoş geldin Admin!", "success");
+    } 
+    else if (existing) {
+      if (existing.isBanned) return showMsg("Hesabınız yasaklanmıştır!", "error");
+      setActiveUser(existing); setPage('profiles'); showMsg("Giriş başarılı!", "success");
+    } 
+    else { showMsg("Hatalı e-posta veya şifre!", "error"); }
   };
 
+  const handleRegister = (u) => {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!u.username || u.username.length < 3) return showMsg("Kullanıcı adı en az 3 harf!", "error");
+    if (!emailRegex.test(u.email)) return showMsg("Geçersiz e-posta formatı!", "error");
+    if (u.password.length < 8) return showMsg("Şifre en az 8 haneli olmalı!", "error");
+    if (users.some(x => x.email === u.email)) return showMsg("Bu e-posta zaten kullanımda!", "error");
+
+    const newUser = { ...u, role: 'user', isBanned: false };
+    saveUserToFirebase(newUser);
+    showMsg("Kayıt başarılı! Giriş yapabilirsiniz.", "success");
+    setPage('login');
+  };
+
+  const handleLogout = () => {
+    localStorage.clear();
+    window.location.reload();
+  };
+
+  // --- DİĞER FONKSİYONLAR (Watch, Review vs.) ---
   const handleWatch = (anime) => {
     let playAnime = { ...anime };
-    let hasSeasons = anime.seasons && anime.seasons.length > 0 && anime.seasons[0].episodes?.length > 0;
-    let hasOldEps = anime.episodes && anime.episodes.length > 0;
+    let hasSeasons = anime.seasons && anime.seasons.length > 0;
+    if (!hasSeasons) return showMsg("Bölüm bulunamadı!", "error");
 
-    if (!hasSeasons && !hasOldEps) return showMsg("Bu animenin henüz bölümü yok!", "error");
-
-    if (!hasSeasons && hasOldEps) {
-      playAnime.seasons = [{ seasonNumber: 1, episodes: anime.episodes }];
-    }
-
-    const adUrl = localStorage.getItem('kaiAdUrl');
     setSelectedAnime(playAnime);
     setCurrentSeasonIdx(0);
     setCurrentEpIndex(0);
@@ -142,50 +173,14 @@ function App() {
       updatedProfile.history.unshift(playAnime);
       if (updatedProfile.history.length > 12) updatedProfile.history.pop();
       setSelectedProfile(updatedProfile);
+      
       const updatedUser = { 
         ...activeUser, 
         profiles: activeUser.profiles.map(p => p.name === selectedProfile.name ? updatedProfile : p) 
       };
       handleUpdateUser(updatedUser);
     }
-
-    if (adUrl && adUrl !== "") {
-      setPage('ad-screen');
-      setAdTimer(5);
-      const timer = setInterval(() => {
-        setAdTimer((prev) => {
-          if (prev <= 1) { clearInterval(timer); setPage('watch'); return 5; }
-          return prev - 1;
-        });
-      }, 1000);
-    } else { setPage('watch'); }
-  };
-
-  const handleAddReview = (animeTitle, reviewText, rating) => {
-    const newReview = { 
-      username: selectedProfile.name, 
-      userImg: selectedProfile.img, 
-      text: reviewText, 
-      rating: Number(rating), 
-      date: new Date().toLocaleDateString() 
-    };
-    const updatedAnimes = animes.map(a => {
-      if (a.title === animeTitle) {
-        const currentReviews = [newReview, ...(a.reviews || [])];
-        const total = currentReviews.reduce((sum, r) => sum + r.rating, 0);
-        const avg = (total / currentReviews.length).toFixed(1);
-        return { ...a, reviews: currentReviews, rating: avg };
-      }
-      return a;
-    });
-    updateAnimesInFirebase(updatedAnimes);
-    showMsg("Yorumun eklendi!", "success");
-  };
-
-  const handleLogout = () => {
-    localStorage.removeItem('activeUser');
-    localStorage.removeItem('selectedProfile');
-    window.location.reload();
+    setPage('watch');
   };
 
   const currentSeason = selectedAnime?.seasons?.[currentSeasonIdx];
@@ -209,40 +204,14 @@ function App() {
         </nav>
       )}
 
-      {page === 'login' && <AuthView type="login" onAction={(e,p) => {
-        const existing = users.find(x => x.email === e && x.password === p);
-        if (e === "rojhatdonenn@gmail.com" && p === "rdXhejsNfu21") {
-          const adminUser = existing || {
-            email: e, role: 'admin', username: 'Rojhat', 
-            profiles: [{name: 'Admin', img: 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png', history: []}]
-          };
-          if(!existing) setUsers([...users, adminUser]);
-          setActiveUser(adminUser); setPage('profiles'); showMsg("Hoş geldin Admin!", "success");
-        } else if (existing) {
-          if (existing.isBanned) return showMsg("Yasaklı hesap!", "error");
-          setActiveUser(existing); setPage('profiles'); showMsg("Giriş başarılı!", "success");
-        } else { showMsg("Hatalı bilgiler!", "error"); }
-      }} onSwitch={() => setPage('register')} />}
-
-      {page === 'register' && <AuthView type="register" onAction={(u) => {
-        // --- YENİ GÜVENLİK KONTROLLERİ ---
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        
-        if (!u.username || u.username.length < 3) return showMsg("Kullanıcı adı en az 3 harf olmalı!", "error");
-        if (!emailRegex.test(u.email)) return showMsg("Geçersiz e-posta! (Örn: isim@mail.com)", "error");
-        if (u.password.length < 8) return showMsg("Şifre en az 8 haneli olmalı!", "error");
-        if (users.some(x => x.email === u.email)) return showMsg("Bu e-posta zaten kayıtlı!", "error");
-        // --------------------------------
-
-        setUsers([...users, {...u, role:'user', isBanned:false}]); 
-        showMsg("Kayıt başarılı!", "success"); setPage('login');
-      }} onSwitch={() => setPage('login')} />}
+      {page === 'login' && <AuthView type="login" onAction={handleLogin} onSwitch={() => setPage('register')} />}
+      {page === 'register' && <AuthView type="register" onAction={handleRegister} onSwitch={() => setPage('login')} />}
       
       {page === 'profiles' && activeUser && <Profiles user={activeUser} onSelect={(p) => {setSelectedProfile(p); setPage('home');}} onUpdateUser={handleUpdateUser} />}
       
       {page === 'home' && (
         <>
-          <Home hero={hero} animeList={animes} onWatch={handleWatch} history={selectedProfile?.history || []} onRemoveHistory={handleRemoveHistory} />
+          <Home hero={hero} animeList={animes} onWatch={handleWatch} history={selectedProfile?.history || []} onRemoveHistory={() => {}} />
           <div className="container" style={{maxWidth:'1200px', margin:'0 auto'}}>
              <GoogleAd slotId="7777777777" />
           </div>
@@ -252,15 +221,13 @@ function App() {
       {page === 'admin' && (
         <Admin 
           allUsers={users} 
-          setUsers={setUsers} 
-          animeList={animes} 
-          setAnimes={(newList) => { setAnimes(newList); updateAnimesInFirebase(newList); }} 
-          onAnimeDelete={(idx) => {
-            const newList = animes.filter((_, i) => i !== idx);
-            setAnimes(newList);
-            updateAnimesInFirebase(newList);
+          setUsers={(newList) => {
+             // Admin panelinde birini banladığında Firebase'e gönderir
+             newList.forEach(u => saveUserToFirebase(u));
           }} 
-          setHero={(h) => { setHero(h); set(ref(db, 'hero'), h); }} 
+          animeList={animes} 
+          setAnimes={(newList) => set(ref(db, 'animes'), newList)}
+          setHero={(h) => set(ref(db, 'hero'), h)} 
           goToHome={() => setPage('home')} 
         />
       )}
@@ -274,47 +241,9 @@ function App() {
               <p>S{currentSeason?.seasonNumber} - Bölüm {currentEpisode?.number}</p>
             </div>
           </div>
-          
-          <GoogleAd slotId="8888888888" />
-
           <div className="video-section">
-            <iframe src={currentEpisode?.url} allowFullScreen referrerPolicy="no-referrer" title="v"></iframe>
+            <iframe src={currentEpisode?.url} allowFullScreen title="v"></iframe>
           </div>
-
-          <div className="watch-content">
-            <GoogleAd slotId="9999999999" />
-            <div className="seasons-nav" style={{display:'flex', gap:'10px', marginBottom:'20px', overflowX:'auto', paddingBottom:'10px'}}>
-                {selectedAnime.seasons?.map((s, idx) => (
-                    <button key={idx} className={`btn-gray ${currentSeasonIdx === idx ? 'active-season' : ''}`}
-                        style={{minWidth:'100px', border: currentSeasonIdx === idx ? '2px solid #E50914' : 'none', background: currentSeasonIdx === idx ? '#E50914' : '#222'}}
-                        onClick={() => { setCurrentSeasonIdx(idx); setCurrentEpIndex(0); }}>
-                        {s.seasonNumber}. Sezon
-                    </button>
-                ))}
-            </div>
-            <div className="episodes-list">
-               <h4>Sezon {currentSeason?.seasonNumber} Bölümleri</h4>
-               <div className="ep-grid">
-                  {currentSeason?.episodes.map((ep, i) => (
-                    <button key={i} className={currentEpIndex === i ? 'active' : ''} onClick={() => setCurrentEpIndex(i)}>{ep.number}</button>
-                  ))}
-               </div>
-            </div>
-            <div className="details-card">
-               <div className="meta">
-                 <span className="rating-tag">⭐ {selectedAnime.rating || "0.0"}</span>
-                 <span className="fansub-tag">{selectedAnime.fansub || "KAI-SUB"}</span>
-               </div>
-               <ReviewSection anime={selectedAnime} onAddReview={handleAddReview} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {page === 'ad-screen' && (
-        <div className="modal-overlay" style={{background:'#000', flexDirection:'column'}}>
-            <img src={localStorage.getItem('kaiAdUrl')} style={{maxWidth:'80%', borderRadius:'10px'}} alt="ad" />
-            <h2 style={{marginTop:'20px'}}>Reklam Geçiliyor: {adTimer}sn</h2>
         </div>
       )}
     </div>
@@ -332,14 +261,8 @@ function AuthView({ type, onAction, onSwitch }) {
       onAction(e, p);
     } else {
       onAction({
-        username: u, 
-        email: e, 
-        password: p, 
-        profiles: [{
-          name: u, 
-          img: 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png', 
-          history: []
-        }]
+        username: u, email: e, password: p, 
+        profiles: [{ name: u, img: 'https://upload.wikimedia.org/wikipedia/commons/0/0b/Netflix-avatar.png', history: [] }]
       });
     }
   };
@@ -348,32 +271,12 @@ function AuthView({ type, onAction, onSwitch }) {
     <div className="modal-overlay" style={{ background: '#000' }}>
       <div className="modal">
         <h1>{type === 'login' ? 'Giriş' : 'Kayıt'}</h1>
-        
-        {type === 'register' && (
-          <input 
-            className="admin-input" 
-            placeholder="Kullanıcı Adı" 
-            onChange={x => setU(x.target.value)} 
-          />
-        )}
-        
-        <input 
-          className="admin-input" 
-          placeholder="E-posta" 
-          onChange={x => setE(x.target.value)} 
-        />
-        
-        <input 
-          className="admin-input" 
-          type="password" 
-          placeholder="Şifre" 
-          onChange={x => setP(x.target.value)} 
-        />
-        
+        {type === 'register' && <input className="admin-input" placeholder="Kullanıcı Adı" onChange={x => setU(x.target.value)} />}
+        <input className="admin-input" placeholder="E-posta" onChange={x => setE(x.target.value)} />
+        <input className="admin-input" type="password" placeholder="Şifre" onChange={x => setP(x.target.value)} />
         <button className="btn-red" style={{ width: '100%' }} onClick={handleSubmit}>
           {type === 'login' ? 'Giriş Yap' : 'Hesap Oluştur'}
         </button>
-        
         <p onClick={onSwitch} style={{ cursor: 'pointer', marginTop: '15px', fontSize: '14px', color: '#888' }}>
           {type === 'login' ? 'Hesabın yok mu? Kayıt Ol' : 'Zaten üye misin? Giriş Yap'}
         </p>
