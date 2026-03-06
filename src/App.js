@@ -219,18 +219,18 @@ function App() {
       )}
       
       {page === 'admin' && (
-        <Admin 
-          allUsers={users} 
-          setUsers={(newList) => {
-             // Admin panelinde birini banladığında Firebase'e gönderir
-             newList.forEach(u => saveUserToFirebase(u));
-          }} 
-          animeList={animes} 
-          setAnimes={(newList) => set(ref(db, 'animes'), newList)}
-          setHero={(h) => set(ref(db, 'hero'), h)} 
-          goToHome={() => setPage('home')} 
-        />
-      )}
+  <Admin 
+    allUsers={users} 
+    // Burası çok önemli: Admin panelinde bir değişiklik olduğunda direkt Firebase'i güncellesin
+    setUsers={(updatedUsers) => {
+      updatedUsers.forEach(u => saveUserToFirebase(u));
+    }} 
+    animeList={animes} 
+    setAnimes={(newList) => set(ref(db, 'animes'), newList)}
+    setHero={(h) => set(ref(db, 'hero'), h)} 
+    goToHome={() => setPage('home')} 
+  />
+)}
 
       {page === 'watch' && selectedAnime && (
         <div className="modern-watch">
